@@ -62,7 +62,7 @@ def main():
             canvas.create_line(x, y, end, y-4, fill='#805f47', tags='cat')
     badge = canvas.create_text(100, 16, text='Task Pet', fill='#624834', font=('', 12, 'bold'))
     canvas.create_text(100, 195, text='Click: tasks · Drag: move', fill='#624834', font=('', 10))
-    state = {'editor': None, 'tree': None, 'data': [], 'message': None, 'tick': 0}
+    state = {'editor': None, 'tree': None, 'data': [], 'message': None, 'tick': 0, 'form': None}
     anchor = {'x': 0, 'y': 0, 'moved': False}
 
     def press(event):
@@ -87,11 +87,21 @@ def main():
             if tree is not None and tree.winfo_exists():
                 selected = tree.selection()
                 scroll = tree.yview()
-                tree.delete(*tree.get_children())
                 show_all = state['show_all'].get()
-                for task in sorted(state['data'], key=lambda t: (t['priority'], t['due'] or '9999', t['created_at'])):
-                    if show_all or task['status'] in ('todo', 'doing'):
-                        tree.insert('', 'end', iid=task['id'], values=tuple(task[k] for k in ('title', 'category', 'priority', 'due', 'status')))
+                visible = [task for task in sorted(state['data'], key=lambda t: (t['priority'], t['due'] or '9999', t['created_at']))
+                           if show_all or task['status'] in ('todo', 'doing')]
+                visible_ids = {task['id'] for task in visible}
+                for item in tree.get_children():
+                    if item not in visible_ids:
+                        tree.delete(item)
+                for index, task in enumerate(visible):
+                    values = tuple(task[k] for k in ('title', 'category', 'priority', 'due', 'status'))
+                    if tree.exists(task['id']):
+                        if tuple(str(v) for v in tree.item(task['id'], 'values')) != values:
+                            tree.item(task['id'], values=values)
+                        tree.move(task['id'], '', index)
+                    else:
+                        tree.insert('', index, iid=task['id'], values=values)
                 for item in selected:
                     if tree.exists(item):
                         tree.selection_set(item)
@@ -113,13 +123,23 @@ def main():
         return True
 
     def form(task=None):
+        existing = state['form']
+        if existing is not None and existing.winfo_exists():
+            existing.deiconify()
+            existing.lift()
+            return
         parent = state['editor']
         dialog = tk.Toplevel(parent)
+        state['form'] = dialog
         dialog.title('Edit task' if task else 'Add task')
-        dialog.attributes('-topmost', True)
         dialog.transient(parent)
         dialog.resizable(False, False)
         fields = {}
+        dialog.task_fields = fields  # Keep field variables alive until the dialog closes.
+        def close_form():
+            state['form'] = None
+            dialog.destroy()
+        dialog.protocol('WM_DELETE_WINDOW', close_form)
         options = {'priority': ('P1', 'P2', 'P3'), 'status': ('todo', 'doing', 'done', 'cancelled')}
         defaults = dict(title='', category='收件箱', priority='P2', due='', status='todo')
         labels = dict(title='Task / 任务', category='Category / 分类', priority='Priority / 优先级', due='Due / 截止日期 YYYY-MM-DD', status='Status / 状态')
@@ -144,12 +164,13 @@ def main():
                 messagebox.showinfo('New task', 'New tasks start as todo. You can change the status after saving.', parent=dialog)
                 return
             if commit(args, dialog):
-                dialog.destroy()
+                close_form()
         ttk.Button(dialog, text='Save / 保存', command=save_form).grid(row=5, column=1, sticky='e', padx=12, pady=12)
-        ttk.Button(dialog, text='Cancel', command=dialog.destroy).grid(row=5, column=0, padx=12, pady=12)
+        ttk.Button(dialog, text='Cancel', command=close_form).grid(row=5, column=0, padx=12, pady=12)
         dialog.bind('<Return>', lambda _: save_form())
-        dialog.bind('<Escape>', lambda _: dialog.destroy())
-        dialog.grab_set()
+        dialog.bind('<Escape>', lambda _: close_form())
+        # Deliberately modeless: never capture mouse/keyboard with a Tk grab.
+        dialog.lift()
 
     def selected():
         selection = state['tree'].selection()
@@ -179,7 +200,6 @@ def main():
         window.title('Task Pet · 我的任务')
         window.geometry('780x440')
         window.minsize(600, 300)
-        window.attributes('-topmost', True)
         toolbar = ttk.Frame(window, padding=10)
         toolbar.pack(fill='x')
         ttk.Button(toolbar, text='+ Add / 新增', command=form).pack(side='left')
@@ -205,7 +225,7 @@ def main():
         ttk.Label(window, textvariable=state['message'], padding=10).pack(anchor='w')
         ttk.Label(window, text='Saved locally only when you click Save or Complete. Closing this window keeps the pet running.', padding=(10, 0, 10, 10)).pack(anchor='w')
         def close_editor():
-            state.update(editor=None, tree=None, message=None)
+            state.update(editor=None, tree=None, message=None, form=None)
             window.destroy()
         window.protocol('WM_DELETE_WINDOW', close_editor)
         refresh()

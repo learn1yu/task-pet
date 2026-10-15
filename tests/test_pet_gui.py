@@ -42,11 +42,26 @@ class PetEditorTest(unittest.TestCase):
                     self.assertFalse((Path(tmp)/'tasks.json').exists())
                     button(window, '+ Add / 新增').invoke()
                     dialog = editor_dialog(window)
+                    self.assertIsNone(root.grab_current())
+                    button(window, '+ Add / 新增').invoke()
+                    self.assertEqual(sum(isinstance(w, tk.Toplevel) for w in window.winfo_children()), 1)
                     replace_title(dialog, '桌面测试')
+                    entries = [w for w in children(dialog) if isinstance(w, ttk.Entry) and not isinstance(w, ttk.Combobox)]
+                    title_entry, _, due_entry = entries
+                    # Switching focus to the deadline must retain the unsaved title.
+                    due_entry.focus_force()
+                    root.update()
+                    self.assertEqual(title_entry.get(), '桌面测试')
+                    due_entry.insert(0, '2026-12-31')
+                    root.after(3200, root.quit)
+                    original_mainloop(root)
+                    self.assertEqual(title_entry.get(), '桌面测试')
+                    self.assertEqual(due_entry.get(), '2026-12-31')
                     self.assertEqual(load()['tasks'], [])
                     button(dialog, 'Save / 保存').invoke()
                     task = load()['tasks'][0]
                     self.assertEqual(task['title'], '桌面测试')
+                    self.assertEqual(task['due'], '2026-12-31')
                     tree = next(w for w in children(window) if isinstance(w, ttk.Treeview))
                     tree.selection_set(task['id'])
                     button(window, 'Edit / 编辑').invoke()
