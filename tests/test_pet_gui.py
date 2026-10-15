@@ -62,6 +62,8 @@ class PetEditorTest(unittest.TestCase):
                     button(window, '+ Add / 新增').invoke()
                     self.assertEqual(sum(isinstance(w, tk.Toplevel) for w in window.winfo_children()), 1)
                     replace_title(dialog, '桌面测试')
+                    notes = next(w for w in children(dialog) if isinstance(w, tk.Text))
+                    notes.insert('1.0', '已完成初稿\n等待反馈')
                     entries = [w for w in children(dialog) if isinstance(w, ttk.Entry) and not isinstance(w, ttk.Combobox)]
                     title_entry, _, due_entry = entries
                     # Switching focus to the deadline must retain the unsaved title.
@@ -78,6 +80,7 @@ class PetEditorTest(unittest.TestCase):
                     task = load()['tasks'][0]
                     self.assertEqual(task['title'], '桌面测试')
                     self.assertEqual(task['due'], '2026-12-31')
+                    self.assertEqual(task['notes'], '已完成初稿\n等待反馈')
                     tree = next(w for w in children(window) if isinstance(w, ttk.Treeview))
                     tree.selection_set(task['id'])
                     button(window, 'Edit / 编辑').invoke()
@@ -90,6 +93,7 @@ class PetEditorTest(unittest.TestCase):
                     replace_title(dialog, '修改后任务')
                     button(dialog, 'Save / 保存').invoke()
                     self.assertEqual(load()['tasks'][0]['title'], '修改后任务')
+                    self.assertEqual(load()['tasks'][0]['notes'], '已完成初稿\n等待反馈')
                     tree.selection_set(task['id'])
                     button(window, '✓ Complete / 完成').invoke()
                     self.assertEqual(load()['tasks'][0]['status'], 'done')

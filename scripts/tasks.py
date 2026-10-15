@@ -29,6 +29,7 @@ def load(path=None):
     for t in data['tasks']:
         if not isinstance(t, dict) or not all(k in t for k in ('id', 'title', 'category', 'priority', 'status', 'due', 'created_at', 'updated_at')):
             raise ValueError('Invalid task record')
+        t.setdefault('notes', '')  # Legacy tasks load without rewriting the file.
         if not all(isinstance(t[k], str) for k in t) or not t['title'].strip() or t['status'] not in STATUSES or t['priority'] not in ('P1', 'P2', 'P3') or t['id'] in ids:
             raise ValueError('Invalid task fields')
         if t['due']:
@@ -96,6 +97,7 @@ def main():
         p.add_argument('--category', type=nonempty, default='收件箱' if p is add else None)
         p.add_argument('--priority', choices=('P1', 'P2', 'P3'), default='P2' if p is add else None)
         p.add_argument('--due', type=due, default='' if p is add else None)
+        p.add_argument('--notes', default='' if p is add else None, help='Situation, progress or blockers (multiline allowed)')
     listing = commands.add_parser('list')
     listing.add_argument('--status', choices=STATUSES)
     listing.add_argument('--category')
@@ -109,13 +111,13 @@ def main():
                 now = datetime.now().astimezone().isoformat(timespec='seconds')
                 if args.command == 'add':
                     result = dict(id=uuid.uuid4().hex, title=args.title, category=args.category,
-                                  priority=args.priority, due=args.due, status='todo', created_at=now, updated_at=now)
+                                  priority=args.priority, due=args.due, notes=args.notes, status='todo', created_at=now, updated_at=now)
                     data['tasks'].append(result)
                 else:
                     result = next((t for t in data['tasks'] if t['id'] == args.id), None)
                     if result is None:
                         raise ValueError('Unknown task ID')
-                    for key in ('title', 'category', 'priority', 'due', 'status'):
+                    for key in ('title', 'category', 'priority', 'due', 'status', 'notes'):
                         value = getattr(args, key)
                         if value is not None:
                             result[key] = value

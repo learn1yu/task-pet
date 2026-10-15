@@ -27,7 +27,7 @@ description: 仅当用户主动调用 task-pet 或明确要求使用任务宠物
 
 - 添加：`python3 scripts/tasks.py add '任务标题' --category 科研 --priority P1 --due 2026-10-20`
 - 查看：`python3 scripts/tasks.py list`；可用 `--status todo|doing|done|cancelled`、`--category 类别` 筛选。
-- 更新：`python3 scripts/tasks.py update ID --status doing`；支持 `--title`、`--category`、`--priority`、`--due`（空字符串清除日期）。
+- 更新：`python3 scripts/tasks.py update ID --status doing`；支持 `--title`、`--category`、`--priority`、`--due`（空字符串清除日期），`--notes` 保存多行情况备注（空字符串清除备注）。
 - 总结：`python3 scripts/tasks.py summary`。
 - 安装桌面入口（macOS，仅用户要求时）：`python3 scripts/install_desktop.py` 或双击 `Install Desktop App.command`；生成桌面 `Task Pet.app`。安装后不要移动技能目录，否则重新安装入口。
 - 桌面展示：macOS 优先运行 `sh "Start Task Pet.command"`（自动选择 Tk 8.6+ 的 Python），其他平台运行 `python3 scripts/pet.py`。仅用户要求展示/启动时运行；依赖带 Tk 的 Python 和图形桌面，窗口关闭即退出。失败时说明实际原因并提供清单，不能声称宠物已启动。
@@ -35,6 +35,8 @@ description: 仅当用户主动调用 task-pet 或明确要求使用任务宠物
 任务优先级为 P1/P2/P3，默认 P2；分类默认「收件箱」，建议使用科研、学习、工作、生活或用户自己的类别。在明确添加请求中可合理分类，但不凭空增加任务。未提供截止日期则留空；按用户当地日期解释相对时间，不把期望日期当成硬性承诺。标题接近已有项时先展示可能重复项，避免重复写入。
 
 使用返回的稳定 ID 更新；不凭列表序号猜测。取消用 cancelled，完成用 done，保留历史。变更后简短报告 ID 和实际更新结果。读取失败或数据损坏时停止写入并保留原文件。
+
+Situation / 情况与备注字段保存用户明确输入的进展、阻碍和补充说明；不自动推断进展。添加可用 `--notes`，更新其他字段时保留已有备注。旧任务缺少该字段时视为空；只读兼容不重写文件。桌面表单支持多行，回车换行，保存按钮或 Cmd/Ctrl+Enter 提交。
 
 ## 总结与展示
 

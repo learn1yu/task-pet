@@ -29,6 +29,25 @@ class TasksTest(unittest.TestCase):
             self.assertNotEqual(run('add', '禁止覆盖').returncode, 0)
             self.assertEqual(path.read_text(), '{broken')
 
+    def test_notes_and_legacy_tasks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)/'tasks.json'
+            env = dict(os.environ, TASK_PET_DATA=str(path))
+            def run(*args):
+                result = subprocess.run([sys.executable, str(SCRIPT), *args], env=env, text=True, capture_output=True, check=True)
+                return json.loads(result.stdout)
+            task = run('add', 'legacy task')
+            data = json.loads(path.read_text())
+            del data['tasks'][0]['notes']
+            path.write_text(json.dumps(data))
+            before = path.read_bytes()
+            self.assertEqual(run('list')[0]['notes'], '')
+            self.assertEqual(path.read_bytes(), before)
+            note = '初稿完成\n等待导师反馈'
+            self.assertEqual(run('update', task['id'], '--notes', note)['notes'], note)
+            self.assertEqual(run('update', task['id'], '--priority', 'P1')['notes'], note)
+            self.assertEqual(run('update', task['id'], '--notes', '')['notes'], '')
+
     def test_concurrent_adds(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'tasks.json'

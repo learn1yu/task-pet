@@ -138,7 +138,7 @@ def main():
                     if item not in visible_ids:
                         tree.delete(item)
                 for index, task in enumerate(visible):
-                    values = tuple(task[k] for k in ('title', 'category', 'priority', 'due', 'status'))
+                    values = tuple(task[k] for k in ('title', 'category', 'priority', 'due', 'status')) + (' '.join(task['notes'].split())[:90],)
                     if tree.exists(task['id']):
                         if tuple(str(v) for v in tree.item(task['id'], 'values')) != values:
                             tree.item(task['id'], values=values)
@@ -184,13 +184,17 @@ def main():
             dialog.destroy()
         dialog.protocol('WM_DELETE_WINDOW', close_form)
         options = {'priority': ('P1', 'P2', 'P3'), 'status': ('todo', 'doing', 'done', 'cancelled')}
-        defaults = dict(title='', category='收件箱', priority='P2', due='', status='todo')
-        labels = dict(title='Task / 任务', category='Category / 分类', priority='Priority / 优先级', due='Due / 截止日期 YYYY-MM-DD', status='Status / 状态')
+        defaults = dict(title='', category='收件箱', priority='P2', due='', status='todo', notes='')
+        labels = dict(title='Task / 任务', category='Category / 分类', priority='Priority / 优先级', due='Due / 截止日期 YYYY-MM-DD', status='Status / 状态', notes='Situation / 情况与备注')
         for row, key in enumerate(defaults):
             ttk.Label(dialog, text=labels[key]).grid(row=row, column=0, sticky='w', padx=12, pady=8)
             value = tk.StringVar(value=task[key] if task else defaults[key])
             fields[key] = value
-            if key in options:
+            if key == 'notes':
+                widget = tk.Text(dialog, width=33, height=5, wrap='word', undo=True)
+                widget.insert('1.0', value.get())
+                notes_widget = widget
+            elif key in options:
                 widget = ttk.Combobox(dialog, textvariable=value, values=options[key], state='readonly', width=30)
             else:
                 widget = ttk.Entry(dialog, textvariable=value, width=33)
@@ -198,19 +202,22 @@ def main():
             if key == 'title':
                 widget.focus_set()
         def save_form():
+            fields['notes'].set(notes_widget.get('1.0', 'end-1c'))
             args = ['update', task['id']] if task else ['add', fields['title'].get()]
             for key, value in fields.items():
                 if not task and key in ('title', 'status'):
                     continue
-                args.extend(['--'+key, value.get()])
+                args.append('--'+key+'='+value.get())
             if not task and fields['status'].get() != 'todo':
                 messagebox.showinfo('New task', 'New tasks start as todo. You can change the status after saving.', parent=dialog)
                 return
             if commit(args, dialog):
                 close_form()
-        ttk.Button(dialog, text='Save / 保存', command=save_form).grid(row=5, column=1, sticky='e', padx=12, pady=12)
-        ttk.Button(dialog, text='Cancel', command=close_form).grid(row=5, column=0, padx=12, pady=12)
-        dialog.bind('<Return>', lambda _: save_form())
+        ttk.Button(dialog, text='Save / 保存', command=save_form).grid(row=6, column=1, sticky='e', padx=12, pady=12)
+        ttk.Button(dialog, text='Cancel', command=close_form).grid(row=6, column=0, padx=12, pady=12)
+        dialog.bind('<Return>', lambda event: None if isinstance(event.widget, tk.Text) else save_form())
+        dialog.bind('<Control-Return>', lambda _: (save_form(), 'break')[1])
+        dialog.bind('<Command-Return>', lambda _: (save_form(), 'break')[1])
         dialog.bind('<Escape>', lambda _: close_form())
         # Deliberately modeless: never capture mouse/keyboard with a Tk grab.
         dialog.lift()
@@ -241,7 +248,7 @@ def main():
         window = tk.Toplevel(root)
         state['editor'] = window
         window.title('Task Pet · 我的任务')
-        window.geometry('780x440')
+        window.geometry('900x440')
         window.minsize(600, 300)
         toolbar = ttk.Frame(window, padding=10)
         toolbar.pack(fill='x')
@@ -253,10 +260,10 @@ def main():
         ttk.Checkbutton(toolbar, text='Show history / 历史', variable=state['show_all'], command=refresh).pack(side='right')
         table = ttk.Frame(window)
         table.pack(fill='both', expand=True, padx=10)
-        columns = ('title', 'category', 'priority', 'due', 'status')
+        columns = ('title', 'category', 'priority', 'due', 'status', 'notes')
         tree = ttk.Treeview(table, columns=columns, show='headings', selectmode='browse')
         state['tree'] = tree
-        for key, title, width in zip(columns, ('Task / 任务', 'Category', 'Priority', 'Due', 'Status'), (300, 110, 65, 100, 90)):
+        for key, title, width in zip(columns, ('Task / 任务', 'Category', 'Priority', 'Due', 'Status', 'Situation / 情况'), (220, 90, 60, 95, 80, 180)):
             tree.heading(key, text=title)
             tree.column(key, width=width, minwidth=50)
         scrollbar = ttk.Scrollbar(table, orient='vertical', command=tree.yview)
