@@ -40,6 +40,22 @@ class PetEditorTest(unittest.TestCase):
                     window = next(w for w in root.winfo_children() if isinstance(w, tk.Toplevel))
                     self.assertEqual(load()['tasks'], [])
                     self.assertFalse((Path(tmp)/'tasks.json').exists())
+                    from appearance import photo_path
+                    fixture = Path(tmp)/'fixture.png'
+                    image = tk.PhotoImage(master=root, width=30, height=50)
+                    image.put('red', to=(0, 0, 30, 50))
+                    image.write(str(fixture), format='png')
+                    with patch('tkinter.filedialog.askopenfilename', return_value=str(fixture)):
+                        button(window, 'Photo / 照片').invoke()
+                    self.assertTrue(photo_path().exists())
+                    canvas = next(w for w in root.winfo_children() if isinstance(w, tk.Canvas))
+                    photo_item = next(i for i in canvas.find_all() if canvas.type(i) == 'image')
+                    self.assertEqual(canvas.itemcget(photo_item, 'state'), 'normal')
+                    before_photo = photo_path().read_bytes()
+                    with patch('tkinter.filedialog.askopenfilename', return_value=''):
+                        button(window, 'Photo / 照片').invoke()
+                    self.assertEqual(photo_path().read_bytes(), before_photo)
+                    self.assertFalse((Path(tmp)/'tasks.json').exists())
                     button(window, '+ Add / 新增').invoke()
                     dialog = editor_dialog(window)
                     self.assertIsNone(root.grab_current())

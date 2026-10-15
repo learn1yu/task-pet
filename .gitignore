@@ -4,3 +4,5 @@ __pycache__/
 tasks.json
 tasks.json.lock
 .venv/
+
+pet-photo*.png

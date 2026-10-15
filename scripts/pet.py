@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 from tasks import load, summary
+from appearance import photo_path, install_photo, reset_photo
 
 SCRIPT = Path(__file__).with_name('tasks.py')
 
@@ -21,7 +22,7 @@ def mutate(*args):
 def main():
     try:
         import tkinter as tk
-        from tkinter import ttk, messagebox
+        from tkinter import ttk, messagebox, filedialog
         if tk.TkVersion < 8.6:
             raise RuntimeError('Tk 8.6+ required. On macOS: brew install python-tk@3.13; use Start Task Pet.command')
         root = tk.Tk()
@@ -63,6 +64,48 @@ def main():
     badge = canvas.create_text(100, 16, text='Task Pet', fill='#624834', font=('', 12, 'bold'))
     canvas.create_text(100, 195, text='Click: tasks · Drag: move', fill='#624834', font=('', 10))
     state = {'editor': None, 'tree': None, 'data': [], 'message': None, 'tick': 0, 'form': None}
+    # Keep PhotoImage referenced for as long as its canvas item exists.
+    state['photo'] = None
+    photo_item = canvas.create_image(100, 100, anchor='center', state='hidden')
+    cat_items = [item for item in canvas.find_all() if item not in (badge, photo_item)
+                 and canvas.type(item) != 'text']
+
+    def show_photo(image):
+        state['photo'] = image
+        canvas.itemconfigure(photo_item, image=image, state='normal')
+        for item in cat_items:
+            canvas.itemconfigure(item, state='hidden')
+
+    def choose_photo():
+        filename = filedialog.askopenfilename(parent=state['editor'] or root,
+            title='Choose pet photo / 选择宠物照片',
+            filetypes=[('Images', '*.png *.jpg *.jpeg *.webp *.gif *.bmp *.tif *.tiff *.heic'), ('All files', '*')])
+        if not filename:
+            return
+        try:
+            show_photo(install_photo(filename, root))
+        except (OSError, ValueError, tk.TclError, subprocess.SubprocessError):
+            messagebox.showerror('Photo not changed',
+                'Could not open this image. Try PNG or JPEG on macOS, or PNG/GIF on other platforms. Your previous photo is unchanged.',
+                parent=state['editor'] or root)
+
+    def restore_cat():
+        try:
+            reset_photo()
+        except OSError as exc:
+            messagebox.showerror('Could not reset photo', str(exc), parent=state['editor'] or root)
+            return
+        canvas.itemconfigure(photo_item, state='hidden')
+        state['photo'] = None
+        for item in cat_items:
+            canvas.itemconfigure(item, state='normal')
+
+    if photo_path().exists():
+        try:
+            show_photo(tk.PhotoImage(master=root, file=str(photo_path())))
+        except (OSError, tk.TclError):
+            pass  # Fall back to the cat if a preference file is corrupt.
+
     anchor = {'x': 0, 'y': 0, 'moved': False}
 
     def press(event):
@@ -205,6 +248,7 @@ def main():
         ttk.Button(toolbar, text='+ Add / 新增', command=form).pack(side='left')
         ttk.Button(toolbar, text='Edit / 编辑', command=edit).pack(side='left', padx=6)
         ttk.Button(toolbar, text='✓ Complete / 完成', command=complete).pack(side='left')
+        ttk.Button(toolbar, text='Photo / 照片', command=choose_photo).pack(side='left', padx=6)
         state['show_all'] = tk.BooleanVar(value=False)
         ttk.Checkbutton(toolbar, text='Show history / 历史', variable=state['show_all'], command=refresh).pack(side='right')
         table = ttk.Frame(window)
@@ -235,6 +279,8 @@ def main():
     canvas.bind('<ButtonRelease-1>', lambda _: None if anchor['moved'] else open_editor())
     menu = tk.Menu(root, tearoff=0)
     menu.add_command(label='Open tasks / 编辑任务', command=open_editor)
+    menu.add_command(label='Choose photo… / 选择照片', command=choose_photo)
+    menu.add_command(label='Restore cat / 恢复猫咪', command=restore_cat)
     menu.add_command(label='Quit pet / 退出', command=root.destroy)
     canvas.bind('<Button-3>', lambda event: menu.tk_popup(event.x_root, event.y_root))
     canvas.bind('<Control-Button-1>', lambda event: menu.tk_popup(event.x_root, event.y_root))

@@ -44,6 +44,12 @@ macOS 可双击 `Start Task Pet.command`（或终端运行 `sh "Start Task Pet.c
 
 也可从内置宠物的聊天输入框调用 `$task-pet` 管理任务；独立编辑器不修改内置宠物界面。
 
+## 自选宠物照片
+
+右键宠物 → **Choose photo / 选择照片**，或打开任务编辑器点击 **Photo / 照片**。macOS 支持 JPEG、PNG、HEIC 等系统可解码图片；其他平台支持 Tk 可解码的 PNG/GIF。照片按原比例缩小、完整显示，不裁剪或改动原文件，并在下次启动时保留。右键选择 **Restore cat** 恢复默认猫咪。
+
+显示副本位于任务数据旁的 `pet-photo.png`，仅留在本机，不提交或上传。
+
 ## 本地运行
 
 需要 Python 3.9+；任务存储脚本仅使用标准库，支持 macOS/Linux。桌面窗口还需要 Tk 和图形桌面。
