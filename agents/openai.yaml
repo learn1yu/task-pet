@@ -1,0 +1,6 @@
+interface:
+  display_name: "任务宠物"
+  short_description: "主动调用后记录、分类和总结本地待办，用桌面宠物窗口展示任务"
+  default_prompt: "使用 $task-pet 查看并总结我的待办任务。"
+policy:
+  allow_implicit_invocation: false
