@@ -165,11 +165,21 @@ def main():
         refresh()
         return True
 
+    def present(window, focus=None):
+        # Launchpad can leave Tk windows visible without keyboard activation.
+        # Focus only on a user action; polling never raises or activates a window.
+        window.deiconify()
+        window.lift()
+        target = focus or window
+        def activate():
+            if target.winfo_exists():
+                target.focus_force()
+        window.after_idle(activate)
+
     def form(task=None):
         existing = state['form']
         if existing is not None and existing.winfo_exists():
-            existing.deiconify()
-            existing.lift()
+            present(existing, existing.focus_lastfor())
             return
         parent = state['editor']
         dialog = tk.Toplevel(parent)
@@ -200,7 +210,7 @@ def main():
                 widget = ttk.Entry(dialog, textvariable=value, width=33)
             widget.grid(row=row, column=1, padx=12, pady=8)
             if key == 'title':
-                widget.focus_set()
+                title_widget = widget
         def save_form():
             fields['notes'].set(notes_widget.get('1.0', 'end-1c'))
             args = ['update', task['id']] if task else ['add', fields['title'].get()]
@@ -220,7 +230,7 @@ def main():
         dialog.bind('<Command-Return>', lambda _: (save_form(), 'break')[1])
         dialog.bind('<Escape>', lambda _: close_form())
         # Deliberately modeless: never capture mouse/keyboard with a Tk grab.
-        dialog.lift()
+        present(dialog, title_widget)
 
     def selected():
         selection = state['tree'].selection()
@@ -242,8 +252,11 @@ def main():
     def open_editor():
         existing = state['editor']
         if existing is not None and existing.winfo_exists():
-            existing.deiconify()
-            existing.lift()
+            active_form = state['form']
+            if active_form is not None and active_form.winfo_exists():
+                present(active_form, active_form.focus_lastfor())
+            else:
+                present(existing, state['tree'])
             return
         window = tk.Toplevel(root)
         state['editor'] = window
@@ -280,6 +293,7 @@ def main():
             window.destroy()
         window.protocol('WM_DELETE_WINDOW', close_editor)
         refresh()
+        present(window, tree)
 
     canvas.bind('<ButtonPress-1>', press)
     canvas.bind('<B1-Motion>', drag)
