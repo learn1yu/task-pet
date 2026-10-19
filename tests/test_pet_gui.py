@@ -102,11 +102,58 @@ class PetEditorTest(unittest.TestCase):
                     self.assertEqual(load()['tasks'][0]['notes'], '已完成初稿\n等待反馈')
                     tree.selection_set(task['id'])
                     button(window, '✓ Complete / 完成').invoke()
+                    root.update()
                     self.assertEqual(load()['tasks'][0]['status'], 'done')
                     self.assertEqual(tree.get_children(), ())
-                    checkbox = next(w for w in children(window) if isinstance(w, ttk.Checkbutton))
-                    checkbox.invoke()
-                    self.assertTrue(tree.exists(task['id']))
+                    notebook = next(w for w in children(window) if isinstance(w, ttk.Notebook))
+                    tables = [w for w in children(notebook) if isinstance(w, ttk.Treeview)]
+                    pending, completed, cancelled = tables
+                    self.assertEqual(completed.get_children(), (task['id'],))
+                    self.assertEqual(completed.selection(), (task['id'],))
+                    self.assertEqual(notebook.select(), str(completed.master))
+                    self.assertIn('(1)', notebook.tab(completed.master, 'text'))
+                    self.assertEqual(cancelled.get_children(), ())
+
+                    def change_status(status):
+                        button(window, 'Edit / 编辑').invoke()
+                        dialog = editor_dialog(window)
+                        status_box = next(w for w in children(dialog) if isinstance(w, ttk.Combobox)
+                                          and tuple(w.cget('values')) == ('todo', 'doing', 'done', 'cancelled'))
+                        status_box.set(status)
+                        button(dialog, 'Save / 保存').invoke()
+                        root.update()
+
+                    # Reopening a completed task operates on the active tab.
+                    change_status('doing')
+                    self.assertEqual(pending.get_children(), (task['id'],))
+                    self.assertEqual(completed.get_children(), ())
+                    self.assertEqual(notebook.select(), str(pending.master))
+                    # The exact reported trigger: editing status to done + Save.
+                    change_status('done')
+                    self.assertEqual(pending.get_children(), ())
+                    self.assertEqual(completed.get_children(), (task['id'],))
+                    self.assertEqual(notebook.select(), str(completed.master))
+                    self.assertEqual(load()['tasks'][0]['notes'], '已完成初稿\n等待反馈')
+                    change_status('cancelled')
+                    self.assertEqual(completed.get_children(), ())
+                    self.assertEqual(cancelled.get_children(), (task['id'],))
+                    self.assertEqual(notebook.select(), str(cancelled.master))
+                    change_status('done')
+                    # Passive refresh must keep the chosen tab and completed row.
+                    notebook.select(pending.master)
+                    root.after(3200, root.quit)
+                    original_mainloop(root)
+                    self.assertEqual(notebook.select(), str(pending.master))
+                    self.assertEqual(completed.get_children(), (task['id'],))
+                    # Closing/reopening the editor rebuilds Completed from disk.
+                    root.tk.call(window.protocol('WM_DELETE_WINDOW'))
+                    root.event_generate('<Return>')
+                    root.update()
+                    window = next(w for w in root.winfo_children() if isinstance(w, tk.Toplevel))
+                    notebook = next(w for w in children(window) if isinstance(w, ttk.Notebook))
+                    completed = [w for w in children(notebook) if isinstance(w, ttk.Treeview)][1]
+                    self.assertEqual(completed.get_children(), (task['id'],))
+                    self.assertIn('(1)', notebook.tab(completed.master, 'text'))
                 finally:
                     root.destroy()
             with patch.object(tk.Misc, 'mainloop', exercise), patch.object(sys, 'argv', ['pet.py', '--edit']):

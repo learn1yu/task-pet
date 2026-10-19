@@ -8,6 +8,11 @@ from tasks import load, summary
 from appearance import photo_path, install_photo, reset_photo
 
 SCRIPT = Path(__file__).with_name('tasks.py')
+VIEWS = (
+    ('pending', '未完成 / Pending', ('todo', 'doing')),
+    ('done', '已完成 / Completed', ('done',)),
+    ('cancelled', '已取消 / Cancelled', ('cancelled',)),
+)
 
 
 def mutate(*args):
@@ -63,7 +68,8 @@ def main():
             canvas.create_line(x, y, end, y-4, fill='#805f47', tags='cat')
     badge = canvas.create_text(100, 16, text='Task Pet', fill='#624834', font=('', 12, 'bold'))
     canvas.create_text(100, 195, text='Click: tasks · Drag: move', fill='#624834', font=('', 10))
-    state = {'editor': None, 'tree': None, 'data': [], 'message': None, 'tick': 0, 'form': None}
+    state = {'editor': None, 'tree': None, 'trees': {}, 'notebook': None,
+             'data': [], 'message': None, 'tick': 0, 'form': None}
     # Keep PhotoImage referenced for as long as its canvas item exists.
     state['photo'] = None
     photo_item = canvas.create_image(100, 100, anchor='center', state='hidden')
@@ -126,13 +132,14 @@ def main():
             state['data'] = data['tasks']
             counts = summary(data)
             canvas.itemconfigure(badge, text=f"{counts['pending']} pending · {len(counts['overdue'])} overdue")
-            tree = state['tree']
-            if tree is not None and tree.winfo_exists():
+            ordered = sorted(state['data'], key=lambda t: (t['priority'], t['due'] or '9999', t['created_at']))
+            for key, label, statuses in VIEWS:
+                tree = state['trees'].get(key)
+                if tree is None or not tree.winfo_exists():
+                    continue
                 selected = tree.selection()
                 scroll = tree.yview()
-                show_all = state['show_all'].get()
-                visible = [task for task in sorted(state['data'], key=lambda t: (t['priority'], t['due'] or '9999', t['created_at']))
-                           if show_all or task['status'] in ('todo', 'doing')]
+                visible = [task for task in ordered if task['status'] in statuses]
                 visible_ids = {task['id'] for task in visible}
                 for item in tree.get_children():
                     if item not in visible_ids:
@@ -150,6 +157,8 @@ def main():
                         tree.selection_set(item)
                 if scroll:
                     tree.yview_moveto(scroll[0])
+                state['notebook'].tab(tree.master, text=f'{label} ({len(visible)})')
+            if state['message'] is not None:
                 state['message'].set(f"{counts['pending']} pending · {counts['by_status'].get('done', 0)} completed · {len(counts['overdue'])} overdue")
         except (ValueError, OSError) as exc:
             canvas.itemconfigure(badge, text='Data error · click to inspect')
@@ -158,11 +167,21 @@ def main():
 
     def commit(args, parent):
         try:
-            mutate(*args)
+            task = mutate(*args)
         except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
             messagebox.showerror('Task not saved', str(exc), parent=parent)
             return False
         refresh()
+        # Follow explicit changes to their destination so a completed task never
+        # appears to vanish. Passive polling updates tabs without switching them.
+        key = 'pending' if task['status'] in ('todo', 'doing') else task['status']
+        tree = state['trees'].get(key)
+        if tree is not None and tree.exists(task['id']):
+            state['notebook'].select(tree.master)
+            state['tree'] = tree
+            tree.selection_set(task['id'])
+            tree.focus(task['id'])
+            tree.see(task['id'])
         return True
 
     def present(window, focus=None):
@@ -269,31 +288,38 @@ def main():
         ttk.Button(toolbar, text='Edit / 编辑', command=edit).pack(side='left', padx=6)
         ttk.Button(toolbar, text='✓ Complete / 完成', command=complete).pack(side='left')
         ttk.Button(toolbar, text='Photo / 照片', command=choose_photo).pack(side='left', padx=6)
-        state['show_all'] = tk.BooleanVar(value=False)
-        ttk.Checkbutton(toolbar, text='Show history / 历史', variable=state['show_all'], command=refresh).pack(side='right')
-        table = ttk.Frame(window)
-        table.pack(fill='both', expand=True, padx=10)
+        notebook = ttk.Notebook(window)
+        state['notebook'] = notebook
+        notebook.pack(fill='both', expand=True, padx=10)
         columns = ('title', 'category', 'priority', 'due', 'status', 'notes')
-        tree = ttk.Treeview(table, columns=columns, show='headings', selectmode='browse')
-        state['tree'] = tree
-        for key, title, width in zip(columns, ('Task / 任务', 'Category', 'Priority', 'Due', 'Status', 'Situation / 情况'), (220, 90, 60, 95, 80, 180)):
-            tree.heading(key, text=title)
-            tree.column(key, width=width, minwidth=50)
-        scrollbar = ttk.Scrollbar(table, orient='vertical', command=tree.yview)
-        tree.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side='right', fill='y')
-        tree.pack(fill='both', expand=True)
-        tree.bind('<Double-1>', lambda _: edit())
-        tree.bind('<Return>', lambda _: edit())
+        for key, label, _ in VIEWS:
+            table = ttk.Frame(notebook)
+            notebook.add(table, text=label)
+            tree = ttk.Treeview(table, columns=columns, show='headings', selectmode='browse')
+            state['trees'][key] = tree
+            for column, title, width in zip(columns, ('Task / 任务', 'Category', 'Priority', 'Due', 'Status', 'Situation / 情况'), (220, 90, 60, 95, 80, 180)):
+                tree.heading(column, text=title)
+                tree.column(column, width=width, minwidth=50)
+            scrollbar = ttk.Scrollbar(table, orient='vertical', command=tree.yview)
+            tree.configure(yscrollcommand=scrollbar.set)
+            scrollbar.pack(side='right', fill='y')
+            tree.pack(fill='both', expand=True)
+            tree.bind('<Double-1>', lambda _: edit())
+            tree.bind('<Return>', lambda _: edit())
+        state['tree'] = state['trees']['pending']
+        def tab_changed(_):
+            state['tree'] = next((tree for tree in state['trees'].values()
+                                  if str(tree.master) == notebook.select()), None)
+        notebook.bind('<<NotebookTabChanged>>', tab_changed)
         state['message'] = tk.StringVar()
         ttk.Label(window, textvariable=state['message'], padding=10).pack(anchor='w')
         ttk.Label(window, text='Saved locally only when you click Save or Complete. Closing this window keeps the pet running.', padding=(10, 0, 10, 10)).pack(anchor='w')
         def close_editor():
-            state.update(editor=None, tree=None, message=None, form=None)
+            state.update(editor=None, tree=None, trees={}, notebook=None, message=None, form=None)
             window.destroy()
         window.protocol('WM_DELETE_WINDOW', close_editor)
         refresh()
-        present(window, tree)
+        present(window, state['tree'])
 
     canvas.bind('<ButtonPress-1>', press)
     canvas.bind('<B1-Motion>', drag)
