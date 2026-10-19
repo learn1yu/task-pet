@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Floating desktop pet. Click to edit local tasks; drag to move."""
 import json
+from datetime import date
 from pathlib import Path
 import subprocess
 import sys
-from tasks import load, summary
+from tasks import PRIORITIES, load, summary
 from appearance import photo_path, install_photo, reset_photo
 
 SCRIPT = Path(__file__).with_name('tasks.py')
@@ -13,6 +14,13 @@ VIEWS = (
     ('done', '已完成 / Completed', ('done',)),
     ('cancelled', '已取消 / Cancelled', ('cancelled',)),
 )
+
+
+def task_sort_key(task):
+    """P0 first; then earliest deadline, priority, and creation order."""
+    due = date.fromisoformat(task['due']) if task['due'] else date.max
+    return (task['priority'] != 'P0', not task['due'], due,
+            task['priority'], task['created_at'])
 
 
 def mutate(*args):
@@ -132,7 +140,7 @@ def main():
             state['data'] = data['tasks']
             counts = summary(data)
             canvas.itemconfigure(badge, text=f"{counts['pending']} pending · {len(counts['overdue'])} overdue")
-            ordered = sorted(state['data'], key=lambda t: (t['priority'], t['due'] or '9999', t['created_at']))
+            ordered = sorted(state['data'], key=task_sort_key)
             for key, label, statuses in VIEWS:
                 tree = state['trees'].get(key)
                 if tree is None or not tree.winfo_exists():
@@ -212,7 +220,7 @@ def main():
             state['form'] = None
             dialog.destroy()
         dialog.protocol('WM_DELETE_WINDOW', close_form)
-        options = {'priority': ('P1', 'P2', 'P3'), 'status': ('todo', 'doing', 'done', 'cancelled')}
+        options = {'priority': PRIORITIES, 'status': ('todo', 'doing', 'done', 'cancelled')}
         defaults = dict(title='', category='收件箱', priority='P2', due='', status='todo', notes='')
         labels = dict(title='Task / 任务', category='Category / 分类', priority='Priority / 优先级', due='Due / 截止日期 YYYY-MM-DD', status='Status / 状态', notes='Situation / 情况与备注')
         for row, key in enumerate(defaults):

@@ -1,4 +1,5 @@
 """Opt-in actual Tk form tests: TASK_PET_GUI_TEST=1 python3 -m unittest discover -s tests."""
+import json
 import os
 from pathlib import Path
 import sys
@@ -68,6 +69,10 @@ class PetEditorTest(unittest.TestCase):
                     button(window, '+ Add / 新增').invoke()
                     self.assertEqual(sum(isinstance(w, tk.Toplevel) for w in window.winfo_children()), 1)
                     replace_title(dialog, '桌面测试')
+                    priority = next(w for w in children(dialog) if isinstance(w, ttk.Combobox)
+                                    and tuple(w.cget('values')) == ('P0', 'P1', 'P2', 'P3'))
+                    self.assertEqual(priority.get(), 'P2')
+                    priority.set('P0')
                     notes = next(w for w in children(dialog) if isinstance(w, tk.Text))
                     notes.insert('1.0', '已完成初稿\n等待反馈')
                     entries = [w for w in children(dialog) if isinstance(w, ttk.Entry) and not isinstance(w, ttk.Combobox)]
@@ -86,6 +91,7 @@ class PetEditorTest(unittest.TestCase):
                     task = load()['tasks'][0]
                     self.assertEqual(task['title'], '桌面测试')
                     self.assertEqual(task['due'], '2026-12-31')
+                    self.assertEqual(task['priority'], 'P0')
                     self.assertEqual(task['notes'], '已完成初稿\n等待反馈')
                     tree = next(w for w in children(window) if isinstance(w, ttk.Treeview))
                     tree.selection_set(task['id'])
@@ -154,6 +160,80 @@ class PetEditorTest(unittest.TestCase):
                     completed = [w for w in children(notebook) if isinstance(w, ttk.Treeview)][1]
                     self.assertEqual(completed.get_children(), (task['id'],))
                     self.assertIn('(1)', notebook.tab(completed.master, 'text'))
+                finally:
+                    root.destroy()
+            with patch.object(tk.Misc, 'mainloop', exercise), patch.object(sys, 'argv', ['pet.py', '--edit']):
+                pet.main()
+
+    def test_pending_and_completed_sort_and_reorder(self):
+        import tkinter as tk
+        from tkinter import ttk
+        import pet
+        from tasks import load
+
+        def children(widget):
+            return [child for w in widget.winfo_children() for child in [w, *children(w)]]
+
+        # Already in expected order; store reversed to exercise actual UI sorting.
+        examples = [
+            ('p0-early', 'P0', '2026-11-01', '01'),
+            ('p0-late', 'P0', '2030-01-01', '01'),
+            ('p0-no-date', 'P0', '', '01'),
+            ('early-p3', 'P3', '20261101', '01'),
+            ('same-p1-old', 'P1', '2026-12-01', '01'),
+            ('same-p1-new', 'P1', '2026-12-01', '02'),
+            ('same-p2', 'P2', '2026-12-01', '01'),
+            ('late-p1', 'P1', '2027-01-01', '01'),
+            ('no-date-p1', 'P1', '', '01'),
+            ('no-date-p3', 'P3', '', '01'),
+        ]
+        original_mainloop = tk.Misc.mainloop
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, TASK_PET_DATA=str(Path(tmp)/'tasks.json')):
+            records = []
+            for status in ('todo', 'done'):
+                for title, priority, due, day in reversed(examples):
+                    records.append(dict(id=f'{status}-{title}', title=title, priority=priority,
+                                        due=due, status='doing' if status == 'todo' and title == 'early-p3' else status,
+                                        category='测试', notes='', created_at=f'2026-10-{day}T12:00:00+08:00',
+                                        updated_at='2026-10-03T12:00:00+08:00'))
+            path = Path(tmp)/'tasks.json'
+            path.write_text(json.dumps({'version': 1, 'tasks': records}), encoding='utf-8')
+            before = path.read_bytes()
+
+            def exercise(root, *args):
+                try:
+                    root.after(150, root.quit)
+                    original_mainloop(root)
+                    root.update()
+                    window = next(w for w in root.winfo_children() if isinstance(w, tk.Toplevel))
+                    notebook = next(w for w in children(window) if isinstance(w, ttk.Notebook))
+                    pending, completed, cancelled = [w for w in children(notebook) if isinstance(w, ttk.Treeview)]
+                    expected = [example[0] for example in examples]
+                    def titles(tree):
+                        return [tree.item(item, 'values')[0] for item in tree.get_children()]
+                    self.assertEqual(titles(pending), expected)
+                    self.assertEqual(titles(completed), expected)
+                    self.assertEqual(cancelled.get_children(), ())
+                    self.assertEqual(path.read_bytes(), before)
+                    # Editing either tab must move the existing row immediately.
+                    for tree, status in ((pending, 'todo'), (completed, 'done')):
+                        notebook.select(tree.master)
+                        root.update()
+                        task_id = f'{status}-late-p1'
+                        tree.selection_set(task_id)
+                        next(w for w in children(window) if isinstance(w, ttk.Button)
+                             and w.cget('text') == 'Edit / 编辑').invoke()
+                        dialog = next(w for w in window.winfo_children() if isinstance(w, tk.Toplevel))
+                        priority = next(w for w in children(dialog) if isinstance(w, ttk.Combobox)
+                                        and tuple(w.cget('values')) == ('P0', 'P1', 'P2', 'P3'))
+                        priority.set('P0')
+                        next(w for w in children(dialog) if isinstance(w, ttk.Button)
+                             and w.cget('text') == 'Save / 保存').invoke()
+                        root.update()
+                        self.assertEqual(titles(tree), ['p0-early', 'late-p1'] +
+                                         [title for title in expected[1:] if title != 'late-p1'])
+                        self.assertEqual(tree.selection(), (task_id,))
+                        self.assertEqual(next(t for t in load()['tasks'] if t['id'] == task_id)['priority'], 'P0')
                 finally:
                     root.destroy()
             with patch.object(tk.Misc, 'mainloop', exercise), patch.object(sys, 'argv', ['pet.py', '--edit']):

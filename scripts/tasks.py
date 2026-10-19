@@ -11,6 +11,7 @@ import tempfile
 import uuid
 
 STATUSES = ('todo', 'doing', 'done', 'cancelled')
+PRIORITIES = ('P0', 'P1', 'P2', 'P3')
 
 def data_path():
     path = Path(os.environ.get('TASK_PET_DATA', '~/.local/share/task-pet/tasks.json')).expanduser()
@@ -30,7 +31,7 @@ def load(path=None):
         if not isinstance(t, dict) or not all(k in t for k in ('id', 'title', 'category', 'priority', 'status', 'due', 'created_at', 'updated_at')):
             raise ValueError('Invalid task record')
         t.setdefault('notes', '')  # Legacy tasks load without rewriting the file.
-        if not all(isinstance(t[k], str) for k in t) or not t['title'].strip() or t['status'] not in STATUSES or t['priority'] not in ('P1', 'P2', 'P3') or t['id'] in ids:
+        if not all(isinstance(t[k], str) for k in t) or not t['title'].strip() or t['status'] not in STATUSES or t['priority'] not in PRIORITIES or t['id'] in ids:
             raise ValueError('Invalid task fields')
         if t['due']:
             date.fromisoformat(t['due'])
@@ -95,7 +96,7 @@ def main():
     update.add_argument('--status', choices=STATUSES)
     for p in (add, update):
         p.add_argument('--category', type=nonempty, default='收件箱' if p is add else None)
-        p.add_argument('--priority', choices=('P1', 'P2', 'P3'), default='P2' if p is add else None)
+        p.add_argument('--priority', choices=PRIORITIES, default='P2' if p is add else None)
         p.add_argument('--due', type=due, default='' if p is add else None)
         p.add_argument('--notes', default='' if p is add else None, help='Situation, progress or blockers (multiline allowed)')
     listing = commands.add_parser('list')

@@ -9,6 +9,27 @@ import unittest
 SCRIPT = Path(__file__).resolve().parents[1] / 'scripts' / 'tasks.py'
 
 class TasksTest(unittest.TestCase):
+    def test_p0_roundtrip_and_default_priority(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'tasks.json'
+            env = dict(os.environ, TASK_PET_DATA=str(path))
+            def run(*args):
+                result = subprocess.run([sys.executable, str(SCRIPT), *args], env=env,
+                                        text=True, capture_output=True, check=True)
+                return json.loads(result.stdout)
+            normal = run('add', '默认任务')
+            self.assertEqual(normal['priority'], 'P2')
+            urgent = run('add', '置顶任务', '--priority', 'P0')
+            self.assertEqual(urgent['priority'], 'P0')
+            self.assertEqual(run('update', normal['id'], '--priority', 'P0')['priority'], 'P0')
+            self.assertEqual([task['priority'] for task in run('list')], ['P0', 'P0'])
+            self.assertEqual(run('summary')['pending'], 2)
+            before = path.read_bytes()
+            bad = subprocess.run([sys.executable, str(SCRIPT), 'update', urgent['id'],
+                                  '--priority', 'P4'], env=env, capture_output=True)
+            self.assertNotEqual(bad.returncode, 0)
+            self.assertEqual(path.read_bytes(), before)
+
     def test_lifecycle_and_corruption(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'data' / 'tasks.json'
