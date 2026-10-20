@@ -1,5 +1,6 @@
 """Opt-in actual Tk form tests: TASK_PET_GUI_TEST=1 python3 -m unittest discover -s tests."""
 import json
+from datetime import date
 import os
 from pathlib import Path
 import sys
@@ -215,6 +216,19 @@ class PetEditorTest(unittest.TestCase):
                     self.assertEqual(titles(completed), expected)
                     self.assertEqual(cancelled.get_children(), ())
                     self.assertEqual(path.read_bytes(), before)
+                    def overdue_rows(tree):
+                        return {item for item in tree.get_children() if 'overdue' in tree.item(item, 'tags')}
+                    self.assertEqual(overdue_rows(pending), {'todo-p0-early', 'todo-early-p3'})
+                    self.assertEqual(overdue_rows(completed), set())
+                    # A new day must recolor existing rows without a file edit.
+                    calendar.today.return_value = date(2026, 12, 2)
+                    root.after(3200, root.quit)
+                    original_mainloop(root)
+                    self.assertEqual(overdue_rows(pending), {'todo-p0-early', 'todo-early-p3',
+                                     'todo-same-p1-old', 'todo-same-p1-new', 'todo-same-p2'})
+                    self.assertEqual(overdue_rows(completed), set())
+                    self.assertEqual(path.read_bytes(), before)
+                    self.assertEqual(titles(pending), expected)
                     # Editing either tab must move the existing row immediately.
                     for tree, status in ((pending, 'todo'), (completed, 'done')):
                         notebook.select(tree.master)
@@ -234,9 +248,21 @@ class PetEditorTest(unittest.TestCase):
                                          [title for title in expected[1:] if title != 'late-p1'])
                         self.assertEqual(tree.selection(), (task_id,))
                         self.assertEqual(next(t for t in load()['tasks'] if t['id'] == task_id)['priority'], 'P0')
+                    # Changing the deadline or status must also clear red rows.
+                    pet.mutate('update', 'todo-p0-early', '--due', '2027-02-01')
+                    pet.mutate('update', 'todo-early-p3', '--due', '')
+                    pet.mutate('update', 'todo-same-p1-old', '--status', 'done')
+                    pet.mutate('update', 'todo-same-p1-new', '--status', 'cancelled')
+                    root.after(3200, root.quit)
+                    original_mainloop(root)
+                    self.assertEqual(overdue_rows(pending), {'todo-same-p2'})
+                    self.assertEqual(overdue_rows(completed), set())
+                    self.assertEqual(overdue_rows(cancelled), set())
                 finally:
                     root.destroy()
-            with patch.object(tk.Misc, 'mainloop', exercise), patch.object(sys, 'argv', ['pet.py', '--edit']):
+            with patch.object(tk.Misc, 'mainloop', exercise), patch.object(sys, 'argv', ['pet.py', '--edit']), \
+                    patch('tasks.date', wraps=date) as calendar:
+                calendar.today.return_value = date(2026, 12, 1)
                 pet.main()
 
 if __name__ == '__main__':

@@ -139,6 +139,7 @@ def main():
             data = load()
             state['data'] = data['tasks']
             counts = summary(data)
+            overdue_ids = {task['id'] for task in counts['overdue']}
             canvas.itemconfigure(badge, text=f"{counts['pending']} pending · {len(counts['overdue'])} overdue")
             ordered = sorted(state['data'], key=task_sort_key)
             for key, label, statuses in VIEWS:
@@ -154,12 +155,15 @@ def main():
                         tree.delete(item)
                 for index, task in enumerate(visible):
                     values = tuple(task[k] for k in ('title', 'category', 'priority', 'due', 'status')) + (' '.join(task['notes'].split())[:90],)
+                    tags = ('overdue',) if task['id'] in overdue_ids else ()
                     if tree.exists(task['id']):
                         if tuple(str(v) for v in tree.item(task['id'], 'values')) != values:
                             tree.item(task['id'], values=values)
+                        # Re-evaluate even without data edits, e.g. after midnight.
+                        tree.item(task['id'], tags=tags)
                         tree.move(task['id'], '', index)
                     else:
-                        tree.insert('', index, iid=task['id'], values=values)
+                        tree.insert('', index, iid=task['id'], values=values, tags=tags)
                 for item in selected:
                     if tree.exists(item):
                         tree.selection_set(item)
@@ -304,6 +308,7 @@ def main():
             table = ttk.Frame(notebook)
             notebook.add(table, text=label)
             tree = ttk.Treeview(table, columns=columns, show='headings', selectmode='browse')
+            tree.tag_configure('overdue', foreground='#d32f2f')
             state['trees'][key] = tree
             for column, title, width in zip(columns, ('Task / 任务', 'Category', 'Priority', 'Due', 'Status', 'Situation / 情况'), (220, 90, 60, 95, 80, 180)):
                 tree.heading(column, text=title)

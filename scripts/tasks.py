@@ -80,9 +80,10 @@ def due(value):
 def summary(data):
     tasks = data['tasks']
     pending = [t for t in tasks if t['status'] in ('todo', 'doing')]
+    today = date.today()
     return {'pending': len(pending), 'by_category': dict(Counter(t['category'] for t in pending)),
             'by_status': dict(Counter(t['status'] for t in tasks)),
-            'overdue': [t for t in pending if t['due'] and t['due'] < date.today().isoformat()],
+            'overdue': [t for t in pending if t['due'] and date.fromisoformat(t['due']) < today],
             'doing': [t for t in pending if t['status'] == 'doing']}
 
 def main():
